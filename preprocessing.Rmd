@@ -1,0 +1,129 @@
+---
+title: "preprocessing"
+author: "Matthew Angel"
+date: "7/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r initialize, echo=FALSE}
+
+list.of.packages <- c("stringr","dendsort")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+
+list.of.bioc.packages <- c()
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+new.bioc.packages <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+if(length(new.bioc.packages)) BiocManager::install(new.bioc.packages)
+
+
+Sys.setenv(JAVA_HOME='/Library/Java/JavaVirtualMachines/jdk-16.0.2.jdk/Contents/Home')
+```
+## MSD Preprocessing
+
+```{r preprocessing, echo=TRUE}
+
+suppressMessages(library(stringr))
+suppressMessages(library(tidyverse))
+
+workDir <- '/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer'
+setwd(workDir)
+
+raw_data <- read.delim('data/cancer_deidentified.csv', header = TRUE, sep=',',check.names = FALSE)
+
+#Elimitate C30
+raw_data <- raw_data %>% filter(!grepl("^C30_", Vial_Label))
+
+row.names(raw_data) <- raw_data$Vial_Label
+raw_data$Vial_Label <- NULL
+
+raw_data <- t(as.matrix(raw_data))
+
+class(raw_data) <- "numeric"
+
+df <- log2(raw_data + 1)
+
+# Setup metadata
+samples <- colnames(df)
+
+patient_id <- apply(array(samples), 1, function(z) unlist(str_split(z,"_"))[1])
+timepoint <- apply(array(samples), 1, function(z) unlist(str_split(z,"_"))[2])
+timepoint <- gsub("D","d",timepoint)
+
+annot <- data.frame(sample_id = samples, patient_id = patient_id, timepoint = timepoint)
+
+# Do diff counts
+contrasts <- c("d2-d1","d23-d22","d23-d22-d2-d1")
+
+# Setup annotation metadata
+contrast_samples <- apply(expand.grid(unique(patient_id), contrasts), 1, paste, collapse="_")
+annot_diff <- data.frame(sample_id = contrast_samples)
+annot_diff$patient_id <- rep(unique(patient_id),length(contrasts))
+annot_diff$timepoint <- apply(array(annot_diff$sample_id), 1, function(z) unlist(str_split(z,"_"))[2])
+
+for(i in seq_along(contrasts)){
+  contrast <- contrasts[i]
+  #contrast <- contrasts[3]
+  
+  if(length(unlist(str_split(contrast,"-"))) == 2){
+    test <- unlist(str_split(contrast,"-"))[1]
+    ref  <- unlist(str_split(contrast,"-"))[2] 
+    
+    annot.c <- annot %>% filter(timepoint %in% c(test,ref)) %>% arrange(patient_id)
+    complex <- FALSE
+  }else{
+    test <- paste(unlist(str_split(contrast,"-"))[1:2],collapse="-")
+    ref  <- paste(unlist(str_split(contrast,"-"))[3:4],collapse="-") 
+    
+    annot.c <- annot_diff %>% filter(timepoint %in% c(test,ref)) %>% arrange(patient_id)
+    complex <- TRUE
+  }
+
+  test_samples <- annot.c$sample_id[annot.c$timepoint == test]
+  ref_samples <- annot.c$sample_id[annot.c$timepoint == ref]
+  
+  test_animals <- gsub(paste0("_",test),"",test_samples, ignore.case = TRUE)
+  ref_animals <- gsub(paste0("_",ref),"",ref_samples, ignore.case = TRUE)
+  
+  if(!all(test_animals == ref_animals)){
+    stop("Something wrong with animal order")
+  }
+
+  samples_in_contrast <- annot.c$sample_id
+  
+  if(!complex){
+    df.test <- df[,test_samples]
+    df.ref  <- df[,ref_samples]
+  }else{
+    df.test <- df_diff[,test_samples]
+    df.ref  <- df_diff[,ref_samples]
+  }
+  
+  df.ret <- df.test - df.ref
+  colnames(df.ret) <- paste(test_animals,contrast,sep="_")
+  
+  if(i == 1){
+    df_diff <- df.ret
+  }else{
+    df_diff <- cbind(df_diff,df.ret)
+  }
+  
+}
+
+colnames(annot_diff)[which(colnames(annot_diff)=="timepoint")] <- "contrast" #need to add contrast here
+
+write.table(df, file = file.path(workDir,"output","processed_data.csv"), row.names = TRUE, quote = FALSE, sep = ',')
+write.table(annot, file = file.path(workDir,"output","sample_annot.csv"), row.names = TRUE, quote = FALSE, sep = ',')
+write.table(df_diff, file = file.path(workDir,"output","diff_counts.csv"), row.names = TRUE, quote = FALSE, sep = ',')
+write.table(annot_diff, file = file.path(workDir,"output","annot_diff.csv"), row.names = FALSE, quote = FALSE, sep = ',')
+```
+## Session Info
+
+```{r pressure, echo=TRUE}
+sessionInfo()
+```

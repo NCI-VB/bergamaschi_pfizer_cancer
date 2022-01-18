@@ -1,0 +1,131 @@
+---
+title: "Cancer_PCA"
+author: "Matthew Angel"
+date: "8/16/2021"
+output:
+  rmarkdown::html_document:
+    toc: true
+
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+  %\usepackage[utf8]{inputenc}
+---
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 28px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+    font-size: 22px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+```{r setup, echo=FALSE}
+
+
+  #devtools::install_github("kassambara/factoextra")
+  suppressMessages(library(factoextra))
+  suppressMessages(library(scales))
+  suppressMessages(library(tidyverse))
+  suppressMessages(library(cowplot))
+  options(warn = -1)
+
+  
+    
+  workDir <- '/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer'
+  setwd(workDir)
+```
+
+
+## Contrast: day23 vs day22 with antibody response
+
+```{r pca2_ab_titre, echo=TRUE}
+  df <- read.delim(file = file.path(workDir,"output","diff_counts.csv"), sep = ',',
+                 header = TRUE,check.names = FALSE)
+  targetfile <- read.delim(file = file.path(workDir,"output","annot_diff.csv"), sep = ',',
+                    header = TRUE, row.names = 1)
+
+  filter <- which(targetfile$contrast == "d23-d22")
+  df.pca <- df[ ,filter]
+  targetfile.pca <- targetfile[filter, ]
+  
+  colnames(df.pca) <- gsub("_d23-d22","",colnames(df.pca))
+  
+  filter <- apply(df.pca,1,function(z) any(is.na(z)))
+  df.mat <- t(as.matrix(df.pca[!filter,]))
+
+  res.pca <- prcomp(df.mat, scale = TRUE)
+
+  additional_metadata <- read.delim("data/patient_metadata_deidentified.tsv", sep="\t", header = TRUE)
+  patient_order <- gsub("_D1","",rownames(res.pca$x))
+  additional_metadata <- additional_metadata[match(patient_order,additional_metadata$patient_id),]
+  
+    
+  groups <- as.factor(targetfile.pca$patient_id)
+  
+  additional_metadata <- additional_metadata[match(rownames(res.pca$x),additional_metadata$patient_id),]
+  imageWidth = 3000
+  dpi = 300
+  
+  imageHeight <- 5000
+  png(
+    filename = file.path(workDir,"plots","vac2_pca_ab_titre_split.png"),
+    width=imageWidth,
+    height=imageHeight,
+    units="px",
+    pointsize=4,
+    bg="white",
+    res=dpi,
+    type="cairo")
+  
+  suppressMessages(library("ggpubr"))
+  low.data <- as.data.frame(res.pca$x[c("C16", "C18", "C25", "C26"),c("PC1","PC2")])
+  mapping = create_aes(list(x = "PC1", y = "PC2"))
+  
+  p1 <- fviz_pca_ind(res.pca,
+               col.ind = additional_metadata$ab_titre, # color by groups
+               gradient.cols = c("Blue","Black","Red"),
+               addEllipses = FALSE, # Concentration ellipses
+               legend.title = "Ab Titre",
+               repel = TRUE, labelsize = 5,pointsize = 3.5)+
+        theme(panel.background = element_rect(colour = "black", size=1),
+              axis.text = element_text(size=16),
+              axis.title = element_text(size=24),
+              legend.title = element_text(size=16))+
+    ggplot2::stat_ellipse(mapping = mapping, data = low.data,
+                         level = 0.95, type = "norm",
+                         colour = "black", fill=NA,
+                         geom = 'polygon')
+    
+  p2 <- fviz_pca_var(res.pca, repel = TRUE, alpha.var=0.2, labelsize = 5, arrowsize = 1)+
+      theme(panel.background = element_rect(colour = "black", size=1),
+            axis.text = element_text(size=16),
+            axis.title = element_text(size=24))
+  plot_grid(p1,p2,ncol=1)
+  null_var <- dev.off()  
+  knitr::include_graphics('/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer/plots/vac2_pca_ab_titre_split.png')
+```

@@ -1,0 +1,297 @@
+---
+title: "Cell Reports Comparison: PCA"
+author: "Matthew Angel"
+date: "9/1/2021"
+output:
+  rmarkdown::html_document:
+    toc: true
+
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+  %\usepackage[utf8]{inputenc}
+---
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 12px;
+  }
+td {  /* Table  */
+  font-size: 8px;
+}
+h1.title {
+  font-size: 38px;
+  color: DarkRed;
+}
+h1 { /* Header 1 */
+  font-size: 28px;
+  color: DarkBlue;
+}
+h2 { /* Header 2 */
+    font-size: 22px;
+  color: DarkBlue;
+}
+h3 { /* Header 3 */
+  font-size: 18px;
+  font-family: "Times New Roman", Times, serif;
+  color: DarkBlue;
+}
+code.r{ /* Code block */
+    font-size: 12px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+</style>
+
+# Prevaccination
+
+## Timepoint: day  1
+
+```{r , echo = TRUE}
+  suppressMessages(library(factoextra))
+  suppressMessages(library(scales))
+  suppressMessages(library(tidyverse))
+  suppressMessages(library(stringr))
+  suppressMessages(library(cowplot))
+  suppressMessages(library(ggpubr))
+  options(warn = -1)
+  
+  workDir <- '/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer'
+  setwd(workDir)
+
+  #Read in data
+  df.cancer <- read.delim(file = file.path(workDir,"output","processed_data.csv"), sep = ',',
+                 header = TRUE)
+  targetfile.cancer <- read.delim(file = file.path(workDir,"output","sample_annot.csv"), sep = ',',
+                    header = TRUE, row.names = 1)
+  
+  # Format healthy individuals
+  df.healthy <- read.delim(file = "https://github.com/NCI-VB/felber_covid_vaccine/raw/main/results/naive_dataset.csv", sep = ',', header = TRUE, row.names = 1)
+  
+  df.healthy <- as.data.frame(t(df.healthy))
+  rownames(df.healthy) <- gsub("__", "_", rownames(df.healthy))
+  df.healthy$patient_id <- apply(array(rownames(df.healthy)), 1, function(z) unlist(str_split(z,"_"))[1])
+  df.healthy$timepoint  <- apply(array(rownames(df.healthy)), 1, function(z) unlist(str_split(z,"_"))[2])
+  
+  new_ids <- paste0("N",str_pad(1:length(unique(df.healthy$patient_id)), width = 2, pad = "0"))
+  names(new_ids) <- unique(df.healthy$patient_id)
+  df.healthy <- df.healthy %>% mutate(new_id = paste(new_ids[patient_id],timepoint, sep = "_"))
+  row.names(df.healthy) <- df.healthy$new_id
+  
+  #do metadata
+  targetfile.healthy <- data.frame(sample_id = row.names(df.healthy),
+                                   patient_id = new_ids[df.healthy$patient_id],
+                                   timepoint = df.healthy$timepoint)
+  remove_columns <- c("patient_id", "timepoint", "new_id")
+  df.healthy <- df.healthy[!colnames(df.healthy) %in% remove_columns]
+  df.healthy <- t(df.healthy)
+  
+  targetfile.cancer$status <- "cancer"
+  targetfile.healthy$status <- "healthy"
+  targetfile <- rbind(targetfile.healthy,targetfile.cancer)
+  
+  
+  #fix names in df
+  
+  d8_samples <- grep("_d8$", colnames(df.healthy),value=TRUE)
+  df.healthy <- df.healthy[ , !colnames(df.healthy) %in% d8_samples]
+
+  row.names(df.healthy) <- gsub("IL-12IL-23p40", "IL-12_IL-23p40",row.names(df.healthy))
+  row.names(df.healthy) <- gsub("VEGF-A", "VEGF",row.names(df.healthy)) 
+  
+  analytes_of_interest <- intersect(row.names(df.healthy), row.names(df.cancer))
+  row.names(df.healthy)[!row.names(df.healthy) %in% analytes_of_interest]
+  # "IL-3"
+  row.names(df.cancer)[!row.names(df.cancer) %in% analytes_of_interest]
+  # "IL-10", "IL-17A","IL-17D","IL-27","MIP-3alpha" 
+  
+  df.healthy <- df.healthy[analytes_of_interest, ]
+  df.cancer <- df.cancer[analytes_of_interest, ]
+  
+  df <- cbind(df.healthy,df.cancer)
+  targetfile <- targetfile[targetfile$sample_id %in% colnames(df), ]
+
+  targetfile$combined <- paste(targetfile$status,targetfile$timepoint,sep = "_")
+
+  # Start Pre-pca
+  targetfile.pca <- targetfile %>% filter(timepoint == "d1", patient_id != "N52")
+  
+  df.pca <- df[ , targetfile.pca$sample_id]
+  
+  filter <- apply(df.pca,1,function(z) any(is.na(z)))
+  df.mat <- t(as.matrix(df.pca[!filter,]))
+  
+  #clean up names
+  row.names(df.mat)  <- gsub("_d1","", row.names(df.mat) , ignore.case = TRUE)
+  res.pca <- prcomp(df.mat, scale = TRUE)
+  
+  groups <- factor(as.character(targetfile.pca$status), levels = c("healthy","cancer"))
+  
+  # pointshape <- rep(19, length(targetfile.pca$status))
+  # pointshape[targetfile.pca$status == "cancer"] <- 17
+  
+  imageWidth = 3000
+  imageHeight = 5000
+  dpi = 300   
+  
+  
+  #Do separate
+  png(
+    filename = file.path(workDir,"plots","cell_reports_comparison_prevac_split.png"),
+    width=imageWidth,
+    height=imageHeight,
+    units="px",
+    pointsize=4,
+    bg="white",
+    res=dpi,
+    type="cairo")  
+ 
+  df <- facto_summarize(res.pca, element = "ind", axes = c(1,2), result = c("coord", "contrib", "cos2"))
+  colnames(df)[2:3] <-  c("x", "y")
+  df$Col. <- groups
+
+  df <- df %>% group_by(Col.) %>% summarize_at(c("x", "y"), mean, na.rm = TRUE)
+  p1 <- fviz_pca_ind(res.pca,
+               col.ind = groups, # color by groups
+               #pointshape = pointshape,
+               palette = rev(hue_pal()(2)),
+               addEllipses = TRUE, # Concentration ellipses
+               legend.title = "Groups",
+               repel = TRUE, labelsize = 4,pointsize = 2.5, mean.point = FALSE)+
+    theme(panel.background = element_rect(colour = "black", size=1),
+            axis.text = element_text(size=16),
+            axis.title = element_text(size=24)) +
+    geom_exec(geom_point, data = df, color = "black", shape = c(21,24), fill = "Col.", size = 4)
+  # df <- 
+                        # color = color, shape = shape, fill = fill,
+                        # size = mean.point.size)
+  p2 <- fviz_pca_var(res.pca, repel = TRUE, alpha.var = 0.2, labelsize = 4, arrowsize = 1)+
+    theme(panel.background = element_rect(colour = "black", size=1),
+            axis.text = element_text(size=16),
+            axis.title = element_text(size=24))
+  plot_grid(p1,p2,ncol=1)
+  null_var <- dev.off()
+  
+  knitr::include_graphics('/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer/plots/cell_reports_comparison_prevac_split.png')
+```
+
+# Vaccination 2
+
+## Contrast: day 23 vs day 22
+
+```{r, echo = TRUE}
+  
+  df.healthy <- read.delim(file = "https://github.com/NCI-VB/felber_covid_vaccine/raw/main/results/naive_diff_counts.csv", sep = ',', header = TRUE, check.names = FALSE, row.names = 1)
+  df.healthy <- as.data.frame(t(df.healthy))
+  df.healthy$patient_id <- apply(array(rownames(df.healthy)), 1, function(z) unlist(str_split(z,"_"))[1])
+  df.healthy$contrast  <- apply(array(rownames(df.healthy)), 1, function(z) unlist(str_split(z,"_"))[2])
+  
+  new_ids <- paste0("N",str_pad(1:length(unique(df.healthy$patient_id)), width = 2, pad = "0"))
+  names(new_ids) <- unique(df.healthy$patient_id)
+  df.healthy <- df.healthy %>% mutate(new_id = paste(new_ids[patient_id],contrast, sep = "_"))
+  row.names(df.healthy) <- df.healthy$new_id
+  
+  
+  #do metadata
+  targetfile.healthy <- data.frame(sample_id = row.names(df.healthy),
+                                   patient_id = new_ids[df.healthy$patient_id],
+                                   contrast = df.healthy$contrast)
+  remove_columns <- c("patient_id", "contrast", "new_id")
+  df.healthy <- df.healthy[!colnames(df.healthy) %in% remove_columns]
+  df.healthy <- t(df.healthy)
+  targetfile.healthy$status <- "healthy"
+
+  
+  #Format cancer
+  df.cancer <- read.delim("output/diff_counts.csv", sep = ',', check.names = FALSE) #ok
+  targetfile.cancer <- read.delim("output/annot_diff.csv", sep = ',')
+  targetfile.cancer$status <- "cancer"
+  
+  targetfile <- rbind(targetfile.healthy,targetfile.cancer)  
+  rownames(targetfile) <- targetfile$sample_id
+  
+  
+  row.names(df.healthy)[which(row.names(df.healthy) == "IL-12IL-23p40")] <- "IL-12_IL-23p40"
+  
+  all_genes <- intersect(row.names(df.healthy),row.names(df.cancer))
+  
+  #row.names(df.healthy)[!row.names(df.healthy) %in% all_genes]
+  #IL-3
+  
+  row.names(df.cancer)[!row.names(df.cancer) %in% all_genes]
+#  [1] "IL-10"      "IL-17A"     "VEGF"       "ICAM-1"     "VCAM-1"     "IL-17C"     "IL-17B"     "IL-17D"    
+#  [9] "TSLP"       "Eotaxin-3"  "MCP-4"      "TARC"       "IL-27"      "MIP-3alpha" "bFGF"       "Flt-1"     
+# [17] "PlGF"       "Tie-2"      "VEGF-C"     "VEGF-D"
+  
+  
+  df.healthy <- df.healthy[all_genes, ]
+  df.cancer <- df.cancer[all_genes, ]
+  
+  df <- cbind(df.healthy,df.cancer)
+  
+  targetfile.pca <- targetfile %>% filter(contrast == "d23-d22")
+  df.pca <- df[ , targetfile.pca$sample_id]
+
+  #bad samples
+  
+  df.pca <- df.pca %>% select(-`N43_d23-d22`)
+  
+  #apply(df.pca, 2,  function(z) length(z[is.na(z)]))
+  #targetfile.pca <- targetfile.pca[colnames(df.pca), ]
+  # filter <- apply(df.pca,2,function(z) any(is.na(z)))
+  df.mat <- t(as.matrix(df.pca))
+  df.mat[is.na(df.mat)] <- 0 #These are LFC so set to 0
+  
+  targetfile.pca <- targetfile.pca[rownames(df.mat), ]
+  
+  rownames(df.mat) <- gsub("_d23-d22","",rownames(df.mat))
+  rownames(targetfile.pca) <- gsub("_d23-d22","",rownames(targetfile.pca))
+  
+  #all(rownames(df.mat) == rownames(targetfile.pca))
+  
+  res.pca <- prcomp(df.mat, scale = TRUE)
+
+  
+  #groups <- as.factor(targetfile.pca$status)
+  groups <- factor(as.character(targetfile.pca$status), levels = c("healthy","cancer"))
+  
+  imageWidth = 3000
+  imageHeight = 5000
+  dpi = 300
+
+  
+  #Do separate
+  png(
+    filename = file.path(workDir,"plots","cell_reports_comparison_pca_d23vd22_split.png"),
+    width=imageWidth,
+    height=imageHeight,
+    units="px",
+    pointsize=4,
+    bg="white",
+    res=dpi,
+    type="cairo")  
+  library(ggpubr)
+  #cancer <- as.data.frame(res.pca$x[grep("^C",rownames(res.pca$x))),c("PC1","PC2")])
+
+  #mapping = create_aes(list(x = "PC1", y = "PC2"))
+  
+  p1 <- fviz_pca_ind(res.pca,
+               col.ind = groups, # color by groups
+               palette = rev(hue_pal()(2)),
+               addEllipses = FALSE, # Concentration ellipses
+               legend.title = "Groups",
+               repel = FALSE, labelsize = NA,pointsize = 2.5, mean.point = TRUE)+
+    theme(panel.background = element_rect(colour = "black", size=1),
+            axis.text = element_text(size=16),
+            axis.title = element_text(size=24))#+
+  
+  p2 <- fviz_pca_var(res.pca, repel = TRUE, alpha.var = 0.2, labelsize = 4, arrowsize = 1)+
+    theme(panel.background = element_rect(colour = "black", size=1),
+            axis.text = element_text(size=16),
+            axis.title = element_text(size=24))
+  plot_grid(p1,p2,ncol=1)
+  null_var <- dev.off()
+  
+  knitr::include_graphics('/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer/plots/cell_reports_comparison_pca_d23vd22_split.png')
+```

@@ -1,0 +1,272 @@
+---
+title: "heatmaps"
+author: "Matthew Angel"
+date: "7/28/2021"
+output: html_document
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Heatmaps
+
+
+```{r heatmaps, echo=TRUE}
+
+suppressMessages(library(colorspace))
+suppressMessages(library(dendsort))
+suppressMessages(library(pheatmap))
+suppressMessages(library(RColorBrewer))
+suppressMessages(library(tidyverse))
+
+workDir <- '/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer'
+setwd(workDir)
+
+# #add ab data
+ab_data <- read.delim(file = file.path(workDir, "data","patient_metadata_deidentified.tsv"), sep="\t")
+ab_data <- ab_data %>% select(patient_id,time_transplant_to_vaccination,ab_titre)
+ 
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+qual_col_pals = qual_col_pals[c(7,6,2,1,8,3,4,5),]
+colors = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+sort_hclust <- function(...) as.hclust(dendsort(as.dendrogram(...)))
+
+breaks = seq(-2, 2, length=100)
+legbreaks = seq(-2, 2, length=5)
+breaks = sapply(breaks, signif, 4)
+legbreaks = sapply(legbreaks, signif, 4)
+
+```
+
+# Log2FC Heatmap
+
+```{r complex_heatmap, echo=TRUE}
+#Read in data
+df_diff <- read.delim(file = file.path(workDir,"output","diff_counts.csv"), sep = ',', header = TRUE, check.names = FALSE)
+annot_diff <- read.delim(file = file.path(workDir,"output","annot_diff.csv"), sep = ',', header = TRUE, row.names = NULL)
+
+annot_diff$contrast[annot_diff$contrast == "d23-d22-d2-d1"] <- "vac2-vac1"
+
+groups <- c("contrast")
+
+annot_diff$contrast = as.factor(annot_diff$contrast)
+
+annot_diff %>% dplyr::arrange(.dots=groups) -> annot_diff
+annot_diff$ab_titre <- ab_data[match(annot_diff$patient_id,ab_data$patient_id), "ab_titre" ]
+annot_diff$time_transplant <- ab_data[match(annot_diff$patient_id,ab_data$patient_id), "time_transplant_to_vaccination" ]
+df.mat <- df_diff[,match(annot_diff$sample_id,colnames(df_diff))]
+
+annot_diff %>% dplyr::select(all_of(groups)) -> annotation_col
+annotation_col = as.data.frame(unclass(annotation_col))
+annotation_col[] <- lapply(annotation_col,factor)
+rownames(annotation_col) <- annot_diff$sample_id
+annotation_col$ab_titre <- annot_diff$ab_titre
+annot_col = list()
+
+b=1
+i=1
+while (i <= length(groups)){
+  nam <- groups[i]
+  grp <- as.factor(annotation_col[,i])
+  c <- b+length(levels(grp))-1
+  col = colors[b:c]
+  names(col) <- levels(grp)
+  assign(nam,col)
+  annot_col = append(annot_col,mget(nam))
+  b = b+c
+  i=i+1
+}
+
+annot_col[["ab_titre"]] <- rev(sequential_hcl(100,palette = "Reds 3"))
+
+annotation_order <- c("ab_titre","contrast")
+annotation_col <- annotation_col[ , annotation_order]
+# annot_col <- annot_col[annotation_order]
+# 
+col_filter <- apply(as.data.frame(df.mat), 2, function(z) all(is.na(z)))
+row_filter <- apply(as.data.frame(df.mat), 1, function(z) length(z[is.na(z)]) > 10)
+df.mat <- df.mat[!row_filter, !col_filter]
+# 
+hcrow = hclust(dist(df.mat), method="average")
+# 
+rowclus <- sort_hclust(hcrow)
+
+```
+
+## Clustered Log2FC Heatmap
+
+```{r sorted_complex, echo=TRUE,message=FALSE,warning=FALSE}
+
+labels_col <- apply(array(colnames(df.mat)),1,function(z) unlist(str_split(z, "_"))[1])
+
+```
+
+## Complex Heatmap
+```{r complexheatmap, echo = TRUE}
+
+
+
+## Complex Heatmap High/Low split vac 1
+
+```{r high_low_split_v1}
+
+  suppressMessages(library("ComplexHeatmap"))
+  suppressMessages(library("circlize"))
+  
+  complex.mat <- as.matrix(df.mat)
+
+  annotation_col$time_transplant <- annot_diff$time_transplant
+  annotation_col$time_transplant <- as.numeric(annotation_col$time_transplant)
+  max_time = ceiling(max(annotation_col$time_transplant[!is.na(annotation_col$time_transplant)]))
+  
+  contrasts <- levels(annot_diff$contrast)
+  heatmap_data <- lapply(contrasts,function(z) complex.mat[,annot_diff$sample_id[annot_diff$contrast == z]])
+  
+  # Pull out vaccine 1
+  low_samples <- c("C16", "C18", "C25", "C26", "C30")
+  
+  heatmap_v1 <- heatmap_data[[1]]
+  low_samples <- colnames(heatmap_v1)[grepl(paste(low_samples,collapse="|"), colnames(heatmap_v1))]
+  high_samples <- colnames(heatmap_v1)[!colnames(heatmap_v1) %in% low_samples]
+  
+  heatmap.order <- c("MIP-1alpha","IL-8","IFN-gamma","IP-10","MIP-1beta","IL-6","IL-1Ra","TSLP","CRP","TNF-alpha","MCP-1","VEGF","IL-12IL-23p40","VCAM-1","ICAM-1","Eotaxin","MCP-4","IL-17C","IL-15","IL-10","IL-16","MDC","IL-17B","TARC","SAA","Eotaxin-3","IL-7","IL-27","MIP-3alpha")
+  
+  cytokines <- intersect(rownames(heatmap_v1),heatmap.order)
+  heatmap.order <- heatmap.order[heatmap.order %in% cytokines]
+  
+  heatmap_data <- list()
+  heatmap_data[[1]] <- heatmap_v1[heatmap.order,high_samples]
+  heatmap_data[[2]] <- heatmap_v1[heatmap.order,low_samples]
+  
+  
+  
+  col_fun = colorRamp2(c(-2, 0, 2), c("#023FA5", "white", "#8E063B")) 
+  col_fun_ab = colorRamp2(c(min(floor(annotation_col$ab_titre)), ceiling(max(annotation_col$ab_titre))), c("white","#5B3794"))
+  col_fun_time = colorRamp2(c(0,max_time), c("white","orange"))
+  
+  #Annotations
+  imageWidth = 2800
+  imageHeight = 1300
+  dpi = 300
+
+  png(
+    filename="plots/ComplexHeatmap_with_clustering_vac1_split_high_low.png",
+    width=imageWidth,
+    height=imageHeight,
+    units="px",
+    pointsize=4,
+    bg="white",
+    res=dpi,
+    type="cairo")
+  
+  heatmap.list <- lapply(seq_along(heatmap_data), function(z) {
+
+      Heatmap(heatmap_data[[z]],
+              cluster_rows = FALSE,
+              name = ifelse(z == 1,"log2FC", as.character(z)),
+              col = col_fun,
+              heatmap_legend_param = list(
+                at = c(-2, 0, 2)),
+              show_heatmap_legend=ifelse(z == 1, TRUE, FALSE),
+              column_labels = gsub("_.+","",colnames(heatmap_data[[z]])),
+              column_names_gp = grid::gpar(fontsize = 6),
+              row_names_gp = grid::gpar(fontsize = 8),
+              top_annotation = HeatmapAnnotation(time_since_transplant = annotation_col[colnames(heatmap_data[[z]]),"time_transplant"],
+                                                 ab_titre = annotation_col[colnames(heatmap_data[[z]]),"ab_titre"], 
+                                                 annotation_name_side = "right",
+                                                 show_annotation_name = ifelse(z==4,TRUE,FALSE),
+                                                 col = list(ab_titre = col_fun_ab,
+                                                            time_since_transplant = col_fun_time),
+                                                 gp = grid::gpar(fontsize = 10)),
+              column_title = ifelse(z == 1,"High", "Low")
+              )})
+  
+  hm <- heatmap.list[[1]] + heatmap.list[[2]]
+  draw(hm, main_heatmap = "2", row_dend_side = "left",)
+  
+  null_var <- dev.off()
+
+  knitr::include_graphics('/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer/plots/ComplexHeatmap_with_clustering_vac1_split_high_low.png')
+```
+## Complex Heatmap High/Low split vac 2
+
+```{r high_low_split_v2}
+
+  complex.mat <- as.matrix(df.mat)
+
+  annotation_col$time_transplant <- annot_diff$time_transplant
+  annotation_col$time_transplant <- as.numeric(annotation_col$time_transplant)
+  max_time = ceiling(max(annotation_col$time_transplant[!is.na(annotation_col$time_transplant)]))
+  
+  contrasts <- levels(annot_diff$contrast)
+  heatmap_data <- lapply(contrasts,function(z) complex.mat[,annot_diff$sample_id[annot_diff$contrast == z]])
+  
+  # Pull out vaccine 1
+  low_samples <- c("C16", "C18", "C25", "C26", "C30")
+  
+  heatmap_v1 <- heatmap_data[[2]]
+  low_samples <- colnames(heatmap_v1)[grepl(paste(low_samples,collapse="|"), colnames(heatmap_v1))]
+  high_samples <- colnames(heatmap_v1)[!colnames(heatmap_v1) %in% low_samples]
+  
+  heatmap_data <- list()
+  heatmap_data[[1]] <- heatmap_v1[,high_samples]
+  heatmap_data[[2]] <- heatmap_v1[,low_samples]
+  
+  
+  
+  col_fun = colorRamp2(c(-2, 0, 2), c("#023FA5", "white", "#8E063B")) 
+  col_fun_ab = colorRamp2(c(min(floor(annotation_col$ab_titre)), ceiling(max(annotation_col$ab_titre))), c("white","#5B3794"))
+  col_fun_time = colorRamp2(c(0,max_time), c("white","orange"))
+  
+  #Annotations
+  imageWidth = 2800
+  imageHeight = 1300
+  dpi = 300
+
+  png(
+    filename="plots/ComplexHeatmap_with_clustering_vac2_split_high_low.png",
+    width=imageWidth,
+    height=imageHeight,
+    units="px",
+    pointsize=4,
+    bg="white",
+    res=dpi,
+    type="cairo")
+  
+  heatmap.list <- lapply(seq_along(heatmap_data), function(z) {
+
+      Heatmap(heatmap_data[[z]],
+              name = ifelse(z == 1,"log2FC", as.character(z)),
+              col = col_fun,
+              heatmap_legend_param = list(
+                at = c(-2, 0, 2)),
+              show_heatmap_legend=ifelse(z == 1, TRUE, FALSE),
+              column_labels = gsub("_.+","",colnames(heatmap_data[[z]])),
+              column_names_gp = grid::gpar(fontsize = 6),
+              row_names_gp = grid::gpar(fontsize = 8),
+              top_annotation = HeatmapAnnotation(time_since_transplant = annotation_col[colnames(heatmap_data[[z]]),"time_transplant"],
+                                                 ab_titre = annotation_col[colnames(heatmap_data[[z]]),"ab_titre"], 
+                                                 annotation_name_side = "right",
+                                                 show_annotation_name = ifelse(z==4,TRUE,FALSE),
+                                                 col = list(ab_titre = col_fun_ab,
+                                                            time_since_transplant = col_fun_time),
+                                                 gp = grid::gpar(fontsize = 10)),
+              column_title = ifelse(z == 1,"High", "Low")
+              )})
+  
+  hm <- heatmap.list[[1]] + heatmap.list[[2]]
+  draw(hm, main_heatmap = "2", row_dend_side = "left",)
+  
+  null_var <- dev.off()
+
+  knitr::include_graphics('/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer/plots/ComplexHeatmap_with_clustering_vac2_split_high_low.png')
+```
+
+
+##Session Info
+```{r session_info, echo = TRUE}
+sessionInfo()
+```

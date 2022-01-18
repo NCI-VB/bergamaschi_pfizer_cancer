@@ -1,0 +1,214 @@
+---
+title: "DEG and Volcano Plots (No Low)"
+author: "Matthew Angel"
+date: "7/28/2021"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Deg Analysis
+
+```{r deg, echo=TRUE}
+  suppressMessages(library(limma))
+  suppressMessages(library(tidyverse))
+  suppressMessages(library(edgeR))
+  suppressMessages(library(stringr))
+  suppressMessages(library(DT))
+  suppressMessages(library(EnhancedVolcano))
+  suppressMessages(library(cowplot))
+  suppressMessages(library(gridExtra))
+
+
+  workDir <- '/Users/angelmg/Documents/nci_vb_git/bergamaschi_pfizer_cancer'
+  setwd(workDir)
+
+  #Read in data
+  df <- read.delim(file = file.path(workDir,"output","processed_data.csv"), sep = ',',
+                 header = TRUE)
+  targetfile <- read.delim(file = file.path(workDir,"output","sample_annot.csv"), sep = ',',
+                    header = TRUE, row.names = 1)
+  
+  targetfile$patient <- apply(array(targetfile$sample_id), 1, function(z) unlist(str_split(z,"_"))[1])
+  
+  genenames <- rownames(df)
+
+  low_samples <- c("C16", "C18", "C25", "C26")
+  targetfile <- targetfile %>% filter(!patient %in% low_samples)
+  
+  samples_for_deg_analysis = targetfile$sample_id #include everyone
+  targetfile <- targetfile[!targetfile$sample_id %in% low_samples, ]
+  
+  df.m <- df[,samples_for_deg_analysis]
+  
+  gene_names <- NULL
+  gene_names$GeneID <- rownames(df)
+  
+  targetfile <- targetfile[match(colnames(df.m),targetfile$sample_id),] #just make extra sure
+  
+  y <- df.m[,match(targetfile$sample_id,colnames(df.m))]
+
+  ordered_covariates=c("timepoint","patient")
+  
+  ordered_covariates=ordered_covariates[order(ordered_covariates!="timepoint")]
+  targetfile <- targetfile %>% select(sample_id,one_of(ordered_covariates)) %>% as.data.frame()
+
+  
+  row.names(targetfile) <- targetfile$sample_id
+  dm.formula <- as.formula(paste("~0 +", paste(ordered_covariates, sep="+", collapse="+")))
+  design=model.matrix(dm.formula, targetfile)
+  
+  colnames(design) <- str_replace_all(colnames(design), "timepoint", "")
+  
+  out <- list()
+  y <- as.matrix(y)
+  
+  out$E <- y
+  out$design <- design
+  v <- new("EList", out)  
+
+  rownames(v$E) <- genenames
+  as.data.frame(v$E) %>% rownames_to_column("Gene") -> df.voom
+  
+  fit <- lmFit(v, design)
+  
+  contrasts_of_interest <- c( "d2-d1",
+                              "d23-d22",
+                              "(d23-d22)-(d2-d1)")
+  
+  cm <- makeContrasts(contrasts = contrasts_of_interest, levels=design)
+  fit2 <- contrasts.fit(fit, cm)
+  fit2 <- eBayes(fit2)
+  
+  logFC = fit2$coefficients
+  colnames(logFC)=paste(colnames(logFC),"logFC",sep="_")
+  tstat = fit2$t
+  colnames(tstat)=paste(colnames(tstat),"tstat",sep="_")
+  FC = 2^fit2$coefficients
+  FC = ifelse(FC<1,-1/FC,FC)
+  colnames(FC)=paste(colnames(FC),"FC",sep="_")
+  pvalall=fit2$p.value
+  colnames(pvalall)=paste(colnames(pvalall),"pval",sep="_")
+  pvaladjall=apply(pvalall,2,function(x) p.adjust(x,"BH"))
+  colnames(pvaladjall)=paste(colnames(fit2$coefficients),"adjpval",sep="_")
+  
+  deg_results=as.data.frame(cbind(FC, logFC, tstat, pvalall, pvaladjall))
+  
+  deg_results %>% rownames_to_column("Gene") -> deg_results
+  
+  write.table(deg_results, file=file.path(workDir,"output","deg_analysis_no_low.tsv"), sep="\t", row.names = FALSE)
+  print(paste0("Total number of genes included: ", nrow(deg_results)))
+  
+  call_me_alias<-colnames(deg_results)
+  colnames(deg_results)<-gsub("\\(|\\)","",call_me_alias)
+  
+  p = htmltools::tagList()
+  grobsList <- vector(mode = "list", length = length(contrasts_of_interest))
+for(i in seq_along(contrasts_of_interest)){
+    contrast <- contrasts_of_interest[i]
+    contras <- unlist(str_split(contrast,"-"))
+    if(length(contras) > 2){
+      contras[1] <- paste(contras[1:2],collapse="-")
+      contras[2] <- paste(contras[3:4],collapse="-")
+      contras <- contras[1:2]
+      contras <- gsub("\\(|\\)","",contras)
+    }
+    columns_of_interest <- c("Gene",grep(paste0("^",contrast,"_"),colnames(deg_results),value=TRUE))
+    
+    label.col <- "Gene"
+    lfc.col <- grep("_logFC",columns_of_interest,value=TRUE)    
+    sig.col <- grep("_pval",columns_of_interest,value=TRUE)
+    
+    deg_sorted <- deg_results %>% select(one_of(columns_of_interest)) %>% arrange(!!rlang::sym(sig.col))
+    
+    p[[i]] <- DT::datatable(deg_sorted, extensions = 'Responsive', caption=htmltools::tags$caption(paste0("DEG Statistics for contrast: ",contras[1],"_vs_",contras[2]) ,style="color:gray; font-size: 18px" ),rownames=F, width = "100%", height = "auto")
+    
+    
+    columns_of_interest <- c(label.col,lfc.col,sig.col)
+    deg_sorted <- deg_sorted[,columns_of_interest]
+    
+    change_lfc_name <- "log2FC"
+    change_sig_name <- "pvalue"
+    colnames(deg_sorted) <- c(label.col,change_lfc_name,change_sig_name)
+    
+    value_to_sort_the_output_dataset <- "p-value"
+    if (value_to_sort_the_output_dataset=="fold-change") {
+        deg_sorted %>% dplyr::arrange(desc(abs(!!rlang::sym(change_lfc_name)))) -> deg_sorted
+    } else if (value_to_sort_the_output_dataset=="p-value") {
+        deg_sorted %>% dplyr::arrange(!!rlang::sym(change_sig_name)) -> deg_sorted
+    }
+    
+    no_genes_to_label <- 15
+    genes_to_label <- as.character(deg_sorted[1:no_genes_to_label,label.col])
+
+    # Plot variables
+    title <- "Volcano Plot"
+    subtitle <- paste0(contras[1]," vs ",contras[2])
+
+    pCutoff  = 0.05
+    FCcutoff = 1.0
+
+    significant=as.vector(table(abs( deg_sorted[,change_lfc_name] ) > FCcutoff &
+                                  deg_sorted[,change_sig_name]   < pCutoff))[2]
+    
+    maxy <-  ceiling(max(-log10(deg_sorted[[change_sig_name]]), na.rm=TRUE))
+    
+    xlab <- bquote(~Log[2]~ "fold change")
+  
+    xlim_additional <- 0
+    ylim_additional <- 0
+    axisLabSize <- 24
+    labSize <- 4
+    pointSize <- 2
+
+    imageWidth = 3000
+    imageHeight = 3000
+    dpi = 300
+
+    filename=file.path(workDir,"plots",paste0("volcano_",contras[1],"_vs_",contras[2],".png"))
+    png(
+      filename = filename,
+      width=imageWidth,
+      height=imageHeight,
+      units="px",
+      pointsize=4,
+      bg="white",
+      res=dpi,
+      type="cairo")    
+    vp <- EnhancedVolcano(  deg_sorted,x=change_lfc_name,y=change_sig_name,
+                            lab=deg_sorted[,label.col],
+                            selectLab = genes_to_label,
+                            title=paste0(title," (Significant=",significant,")"),
+                            subtitle <- subtitle,
+                            xlab=xlab,
+                            ylab=bquote(~-Log[10]~.(change_sig_name)),
+                            xlim=c(floor(min(deg_sorted[,change_lfc_name])) - xlim_additional,ceiling(max(deg_sorted[,change_lfc_name]))+ xlim_additional),
+                            ylim=c(0, maxy + ylim_additional),
+                            pCutoff=pCutoff,
+                            FCcutoff=FCcutoff,
+                            axisLabSize=axisLabSize,
+                            labSize=labSize,
+                            pointSize=pointSize)
+    print(vp)
+    dev.off()
+    grobsList[[i]] <- vp
+  }
+  grobs <- arrangeGrob(grobs=grobsList,ncol=1,newpage=F)
+
+```
+
+```{r fig.width=10, fig.height=30,echo=FALSE}
+  plot(grobs)
+```
+
+```{r deg_tables, echo=TRUE}
+p
+```
+
+```{r session, echo=FALSE}
+
+sessionInfo()
+```

@@ -1,0 +1,491 @@
+---
+title: "Radar Plot"
+author: "Matthew Angel"
+date: "10/22/2021"
+output: html_document
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+.radarchart <- function(df, axistype=0, seg=4, pty=16, pcex = 1, pcol=1:8, plty=1:6, plwd=1.5,
+                       pdensity=NULL, pangle=45, pfcol=NA, cglty=3, cglwd=1,
+                       cglcol="navy", axislabcol="blue", title="", maxmin=TRUE,
+                       na.itp=TRUE, centerzero=FALSE, vlabels=NULL, vlcex=NULL,
+                       caxislabels=NULL, calcex=NULL,
+                       paxislabels=NULL, palcex=NULL, truncate=FALSE, ...) {
+  if (!is.data.frame(df)) { cat("The data must be given as dataframe.\n"); return() }
+  if ((n <- length(df))<3) { cat("The number of variables must be 3 or more.\n"); return() }
+  if (maxmin==FALSE) { # when the dataframe does not include max and min as the top 2 rows.
+    dfmax <- apply(df, 2, max)
+    dfmin <- apply(df, 2, min)
+    df <- rbind(dfmax, dfmin, df)
+  }
+  plot(c(-1.2, 1.2), c(-1.2, 1.2), type="n", frame.plot=FALSE, axes=FALSE, 
+       xlab="", ylab="", main=title, asp=1, ...) # define x-y coordinates without any plot
+  theta <- seq(90, 450, length=n+1)*pi/180
+  theta <- theta[1:n]
+  xx <- cos(theta)
+  yy <- sin(theta)
+  CGap <- ifelse(centerzero, 0, 1)
+  for (i in 0:seg) { # complementary guide lines, dotted navy line by default
+    polygon(xx*(i+CGap)/(seg+CGap), yy*(i+CGap)/(seg+CGap), lty=cglty, lwd=cglwd, border=cglcol)
+    if (axistype==1|axistype==3) CAXISLABELS <- paste(i/seg*100,"(%)")
+    if (axistype==4|axistype==5) CAXISLABELS <- sprintf("%3.2f",i/seg)
+    if (!is.null(caxislabels)&(i<length(caxislabels))) CAXISLABELS <- caxislabels[i+1]
+    if (axistype==1|axistype==3|axistype==4|axistype==5) {
+     if (is.null(calcex)) text(-0.05, (i+CGap)/(seg+CGap), CAXISLABELS, col=axislabcol) else
+     text(-0.05, (i+CGap)/(seg+CGap), CAXISLABELS, col=axislabcol, cex=calcex)
+    }
+  }
+  if (centerzero) {
+    arrows(0, 0, xx*1, yy*1, lwd=cglwd, lty=cglty, length=0, col=cglcol)
+  }
+  else {
+    arrows(xx/(seg+CGap), yy/(seg+CGap), xx*1, yy*1, lwd=cglwd, lty=cglty, length=0, col=cglcol)
+  }
+  PAXISLABELS <- df[1,1:n]
+  if (!is.null(paxislabels)) PAXISLABELS <- paxislabels
+  if (axistype==2|axistype==3|axistype==5) {
+   if (is.null(palcex)) text(xx[1:n], yy[1:n], PAXISLABELS, col=axislabcol) else
+   text(xx[1:n], yy[1:n], PAXISLABELS, col=axislabcol, cex=palcex)
+  }
+  VLABELS <- colnames(df)
+  if (!is.null(vlabels)) VLABELS <- vlabels
+  if (is.null(vlcex)) text(xx*1.2, yy*1.2, VLABELS) else
+  text(xx*1.2, yy*1.2, VLABELS, cex=vlcex)
+  series <- length(df[[1]])
+  SX <- series-2
+  if (length(pty) < SX) { ptys <- rep(pty, SX) } else { ptys <- pty }
+  if (length(pcol) < SX) { pcols <- rep(pcol, SX) } else { pcols <- pcol }
+  if (length(plty) < SX) { pltys <- rep(plty, SX) } else { pltys <- plty }
+  if (length(plwd) < SX) { plwds <- rep(plwd, SX) } else { plwds <- plwd }
+  if (length(pdensity) < SX) { pdensities <- rep(pdensity, SX) } else { pdensities <- pdensity }
+  if (length(pangle) < SX) { pangles <- rep(pangle, SX)} else { pangles <- pangle }
+  if (length(pfcol) < SX) { pfcols <- rep(pfcol, SX) } else { pfcols <- pfcol }
+  for (i in 3:series) {
+    xxs <- xx
+    yys <- yy
+    scale <- CGap/(seg+CGap)+(df[i,]-df[2,])/(df[1,]-df[2,])*seg/(seg+CGap)
+    if (sum(!is.na(df[i,]))<3) { cat(sprintf("[DATA NOT ENOUGH] at %d\n%g\n",i,df[i,])) # for too many NA's (1.2.2012)
+    } else {
+      modifier <- 0
+      hidden_borders <- list()
+      for (j in 1:n) {
+        if (is.na(df[i, j])) { # how to treat NA
+          if (na.itp) { # treat NA using interpolation
+            left <- ifelse(j>1, j-1, n)
+            while (is.na(df[i, left])) {
+              left <- ifelse(left>1, left-1, n)
+            }
+            right <- ifelse(j<n, j+1, 1)
+            while (is.na(df[i, right])) {
+              right <- ifelse(right<n, right+1, 1)
+            }
+            xxleft <- xx[left]*CGap/(seg+CGap)+xx[left]*(df[i,left]-df[2,left])/(df[1,left]-df[2,left])*seg/(seg+CGap)
+            yyleft <- yy[left]*CGap/(seg+CGap)+yy[left]*(df[i,left]-df[2,left])/(df[1,left]-df[2,left])*seg/(seg+CGap)
+            xxright <- xx[right]*CGap/(seg+CGap)+xx[right]*(df[i,right]-df[2,right])/(df[1,right]-df[2,right])*seg/(seg+CGap)
+            yyright <- yy[right]*CGap/(seg+CGap)+yy[right]*(df[i,right]-df[2,right])/(df[1,right]-df[2,right])*seg/(seg+CGap)
+            if (xxleft > xxright) {
+              xxtmp <- xxleft; yytmp <- yyleft;
+              xxleft <- xxright; yyleft <- yyright;
+              xxright <- xxtmp; yyright <- yytmp;
+            }
+            xxs[j] <- xx[j]*(yyleft*xxright-yyright*xxleft)/(yy[j]*(xxright-xxleft)-xx[j]*(yyright-yyleft))
+            yys[j] <- (yy[j]/xx[j])*xxs[j]
+          } else { # treat NA as zero (origin)
+            xxs[j] <- 0
+            yys[j] <- 0
+          }
+        }
+        else {
+          if( (df[i, j] > (seg + CGap)) && truncate){
+            
+            left <- ifelse(j>1, j-1, n)
+            right <- ifelse(j<n, j+1, 1)
+            
+            xpoly.left <- xx[left]*CGap/(seg+CGap)+xx[left]*(df[i, left]-df[2, left])/(df[1, left]-df[2, left])*seg/(seg+CGap)
+            ypoly.left <- yy[left]*CGap/(seg+CGap)+yy[left]*(df[i, left]-df[2, left])/(df[1, left]-df[2, left])*seg/(seg+CGap)
+            
+            xpoly <- xx[j]*CGap/(seg+CGap)+xx[j]*(df[i, j]-df[2, j])/(df[1, j]-df[2, j])*seg/(seg+CGap)
+            ypoly <- yy[j]*CGap/(seg+CGap)+yy[j]*(df[i, j]-df[2, j])/(df[1, j]-df[2, j])*seg/(seg+CGap)
+            
+            xpoly.right <- xx[right]*CGap/(seg+CGap)+xx[right]*(df[i, right]-df[2, right])/(df[1, right]-df[2, right])*seg/(seg+CGap)
+            ypoly.right <- yy[right]*CGap/(seg+CGap)+yy[right]*(df[i, right]-df[2, right])/(df[1, right]-df[2, right])*seg/(seg+CGap)
+            
+            xgrid.left <- xx[left]*(seg+CGap)/(seg+CGap)
+            ygrid.left <- yy[left]*(seg+CGap)/(seg+CGap)
+            
+            xgrid <- xx[j]*(seg+CGap)/(seg+CGap)
+            ygrid <- yy[j]*(seg+CGap)/(seg+CGap)
+            
+            xgrid.right <- xx[right]*(seg+CGap)/(seg+CGap)
+            ygrid.right <- yy[right]*(seg+CGap)/(seg+CGap)
+            
+            slope.grid.left <- (ygrid-ygrid.left)/(xgrid-xgrid.left)
+            slope.grid.right <- (ygrid.right-ygrid)/(xgrid.right-xgrid)
+
+            const.grid.left <- ygrid - (slope.grid.left*xgrid)
+            const.grid.right <- ygrid - (slope.grid.right*xgrid)
+            
+            slope.poly.left <- (ypoly-ypoly.left)/(xpoly-xpoly.left)
+            slope.poly.right <- (ypoly-ypoly.right)/(xpoly-xpoly.right)
+            
+            const.poly.left <- ypoly - (slope.poly.left*xpoly)
+            const.poly.right <- ypoly - (slope.poly.right*xpoly)
+            
+            x.int.left = (const.poly.left - const.grid.left) / (slope.grid.left - slope.poly.left)
+            y.int.left = (slope.grid.left*x.int.left)+const.grid.left
+
+            x.int.right = (const.poly.right - const.grid.right) / (slope.grid.right - slope.poly.right)
+            y.int.right = (slope.grid.right*x.int.right)+const.grid.right
+
+            start <- j+modifier
+            xxs[start] <- x.int.left
+            xxs[start+1] <- xgrid
+            xxs[start+2] <- x.int.right
+            
+            yys[start] <- y.int.left
+            yys[start+1] <- ygrid
+            yys[start+2] <- y.int.right
+            
+            modifier <- modifier + 3
+            
+            hidden_borders <- append(hidden_borders, list(c(start,start+1,start+2)))
+          }else{
+            xxs[j+modifier] <- xx[j]*CGap/(seg+CGap)+xx[j]*(df[i, j]-df[2, j])/(df[1, j]-df[2, j])*seg/(seg+CGap)
+            yys[j+modifier] <- yy[j]*CGap/(seg+CGap)+yy[j]*(df[i, j]-df[2, j])/(df[1, j]-df[2, j])*seg/(seg+CGap)
+          }
+
+        }
+      }
+      if (is.null(pdensities)) {
+        polygon(xxs, yys, lty=pltys[i-2], lwd=plwds[i-2], border=pcols[i-2], col=pfcols[i-2])
+        
+        #redraw grid segments
+        for(k in seq_along(hidden_borders)){
+          x0 <- xxs[hidden_borders[[k]][1]]
+          x1 <- xxs[hidden_borders[[k]][2]]
+          x2 <- xxs[hidden_borders[[k]][3]]
+          y0 <- yys[hidden_borders[[k]][1]]
+          y1 <- yys[hidden_borders[[k]][2]]
+          y2 <- yys[hidden_borders[[k]][3]]
+          
+          segments(x0,y0,x1,y1,lty=cglty, lwd=cglwd*1.7, col=cglcol)
+          segments(x1,y1,x2,y2,lty=cglty, lwd=cglwd*1.7, col=cglcol)
+        }
+      } else {
+        polygon(xxs, yys, lty=pltys[i-2], lwd=plwds[i-2], border=pcols[i-2], 
+         density=pdensities[i-2], angle=pangles[i-2], col=pfcols[i-2])
+      }
+      points(xx*scale, yy*scale, pch=ptys[i-2], col=pcols[i-2], cex = pcex)
+    }
+  }
+}
+```
+
+```{r preprocessing, echo=TRUE, message=FALSE, warning=FALSE}
+  suppressMessages(library("readxl"))
+  suppressMessages(library("stringr"))
+  suppressMessages(library("tidyverse"))
+  #suppressMessages(library("fmsb"))
+  suppressMessages(library("cowplot"))
+  suppressMessages(library("scales"))
+  
+  max_lfc <- 3
+  cap_at_max_lfc <- TRUE
+  truncate = TRUE
+  
+  if(cap_at_max_lfc){
+    tuncate = FALSE
+  }
+
+  cytokine.df <- read.delim("output/diff_counts.csv", sep = ",", check.names = FALSE)
+  cytokine.df <- as.data.frame(t(cytokine.df))
+  colnames(cytokine.df) <- gsub("IL-12_IL-23p40","IL-12IL-23p40",colnames(cytokine.df))
+  #cytokines_of_interest <- c("IL-6","TNF-alpha","IL-7","IFN-gamma","IL-15","IP-10")
+  #cytokine.df <- cytokine.df[,cytokines_of_interest]
+  
+  cytokines <- colnames(cytokine.df)
+
+  heatmap.order <- rev(c("MIP-1alpha","IL-8","IFN-gamma","IP-10","MIP-1beta","IL-6","IL-1Ra","TSLP","CRP","TNF-alpha","MCP-1","VEGF","IL-12IL-23p40","VCAM-1","ICAM-1","Eotaxin","MCP-4","IL-17C","IL-15","IL-10","IL-16","MDC","IL-17B","TARC","SAA","Eotaxin-3","IL-7","IL-27","MIP-3alpha"))
+  
+  cytokine.df$patient_id <- apply(array(row.names(cytokine.df)), 1, function(z) unlist(str_split(z,"_"))[1]) 
+  cytokine.df$contrast <- apply(array(row.names(cytokine.df)), 1, function(z) unlist(str_split(z,"_"))[2])
+  
+  
+  # read metadata
+  ab_data <- read.delim("data/patient_metadata_deidentified.tsv", sep = "\t")
+  ab_data <- ab_data %>% select(patient_id,ab_titre) %>% arrange(desc(ab_titre))
+  ab_data$group <- "Moderate"
+  ab_data$group[ab_data$patient_id %in% c("C07","C27","C15")] <- "High"
+  ab_data$group[ab_data$patient_id %in% c("C16","C18","C25","C26")] <- "Low"
+  
+  cytokine.df$group <- ab_data[match(cytokine.df$patient_id,ab_data$patient_id),"group"]
+  cytokine.df$group <- factor(cytokine.df$group, levels = c("Low","Moderate","High"))
+  
+  cytokine.df <- as.data.frame(cytokine.df) %>% group_by(contrast,group) %>% summarise_at(cytokines,
+                 funs(median)) %>% as.data.frame()
+  
+  # Pull in healthy data
+  df.healthy <- as.data.frame(t(read.delim(file = "https://github.com/NCI-VB/felber_covid_vaccine/raw/main/results/naive_diff_counts.csv", sep = ',', header = TRUE, check.names = FALSE, row.names = 1)))
+  healthy_cytokines <- colnames(df.healthy)
+  df.healthy$contrast <- apply(array(rownames(df.healthy)), 1, function(z) unlist(str_split(z, "_"))[2])
+  df.healthy <- df.healthy %>% group_by(contrast) %>% summarise_at(healthy_cytokines,
+                 funs(median(., na.rm = TRUE))) %>% as.data.frame()
+  
+  
+  
+  
+  min_max.data <- cytokine.df %>% group_by(contrast) %>% summarise_at(cytokines,
+                 funs(min,max)) %>% as.data.frame()
+  cytokine.df$contrast <- factor(cytokine.df$contrast)
+
+  # Calculate min and max for each cytokine
+  nf <- ((ncol(min_max.data)-1)/2+2)
+  min_max.df <- as.data.frame(matrix(nrow = 2*nlevels(cytokine.df$contrast), ncol=nf, dimnames = list(NULL,c("contrast","type",cytokines)) ))
+  
+  min_max.df$contrast <- rep(levels(cytokine.df$contrast),2)
+  min_max.df <- min_max.df[order(min_max.df$contrast), ]
+  min_max.df$type <- rep(c("Max","Min"),nlevels(cytokine.df$contrast))
+  
+  for(i in 1:nrow(min_max.df)){
+    contrast <- min_max.df[i,"contrast"]
+    type <- tolower(min_max.df[i,"type"])
+    
+    rn <- which(min_max.data == contrast)
+    cn <- grep(paste0("_",type,"$"),colnames(min_max.data))
+    
+    if(type == "min"){
+      min_max.df[i,3:nf] <- 0 # Changed from
+    }else{
+      if(cap_at_max_lfc){
+        min_max.df[i,3:nf] <- ifelse(min_max.data[rn,cn] > max_lfc, max_lfc, min_max.data[rn,cn])
+      }else{
+        min_max.df[i,3:nf] <- min_max.data[rn,cn]
+      }
+    }
+  }
+  
+
+```
+
+# Radar charts for cancer patients only
+
+Request:
+Radars with the three cancer groups (truncated), no healthy for vacc1, vacc2 and comparison (include Il-27, MIp3a, IL-10)
+```{r cancer_only, echo=TRUE,message=FALSE,warning=FALSE}
+
+for(i in seq_along(levels(cytokine.df$contrast))){
+  contrast_of_interest <- levels(cytokine.df$contrast)[i]
+  
+  
+  if(contrast_of_interest == "d2-d1"){
+    max_lfc <- 2
+  }else{
+    max_lfc <- 3
+  }
+  
+  radar.df <- cytokine.df %>% filter(contrast == contrast_of_interest) %>% select(-contrast)
+  row.names(radar.df) <- radar.df$group
+  radar.df$group <- NULL
+  
+  # Remove any with NA
+  filter <- apply(radar.df, 2, function(z) any(is.na(z)))
+  radar.df <- radar.df[ , !filter]
+
+  # Correct min
+  radar.df <- as.matrix(radar.df)
+  #radar.df[which(radar.df < 0)] <- 0
+  radar.df[which(radar.df < -1)] <- -1 #testing -1
+  
+  # Place in heatmap order
+  radar_cytokines <- heatmap.order[heatmap.order %in% colnames(radar.df)]
+  radar.df <- radar.df[,radar_cytokines]
+  
+  # Plot options
+  pfcol <- NA
+  color <- rev(scales::hue_pal()(nrow(radar.df)))
+  legend = rownames(radar.df)
+  names(color) <- legend
+  
+  # Prepare variable labels
+  max_labels <- apply(radar.df, 2, max)
+  max_labels <- round(max_labels, digits = 2)
+  names(max_labels) <- colnames(radar.df)
+  ind <- which(max_labels > max_lfc)
+  vlabels <- names(max_labels)
+  vlabels[ind] <- paste0(vlabels[ind],"\n(",max_labels[ind],")")
+
+  if(cap_at_max_lfc){
+    radar.df[which(radar.df > max_lfc)] <- max_lfc
+  }
+  radar.df <- as.data.frame(radar.df)
+  
+  mm.df <- min_max.df %>% filter(contrast == contrast_of_interest) %>% select(-contrast)
+  row.names(mm.df) <- mm.df$type
+  mm.df$type <- NULL
+  
+  radar.df <- rbind(mm.df[,colnames(radar.df)],radar.df)
+  
+  maxval <- ceiling(max(radar.df["Max",]))
+  if(cap_at_max_lfc){
+    maxval <- ifelse(maxval > max_lfc, max_lfc, maxval)
+    
+    radar.df <- as.matrix(radar.df)
+    radar.df[radar.df > maxval] <- maxval
+    radar.df <- as.data.frame(radar.df)
+  }
+  radar.df["Max",] <- max_lfc #always
+  
+  vlabels <- gsub("alpha", "α", vlabels)
+  vlabels <- gsub("beta", "β", vlabels)
+  vlabels <- gsub("gamma","γ",vlabels)
+  vlabels <- gsub("delta","δ",vlabels)
+  
+  plot.new()
+  .radarchart(radar.df,
+             vlabels = vlabels,
+             seg = max_lfc,
+             axistype = 1, caxislabels = as.character(0:max_lfc),
+             # Customize the polygon
+             pcol = color, pfcol = pfcol, plwd = 1.5, plty = 1, pcex = 0.5,
+             # Customize the grid
+             cglcol = "grey", cglty = 1, cglwd = 0.8,
+             # Customize the axis
+             axislabcol = "grey",
+             # Variable labels
+             vlcex = ifelse(ncol(radar.df) <= 10, 0.7, 0.5),
+             title = contrast_of_interest, truncate = truncate)
+  
+  # Add an horizontal legend
+  
+  if("Healthy" %in% rownames(radar.df)){
+    color <- color[-1]
+  }
+  legend(
+    x = "right", legend = legend,, horiz = F,
+    bty = "n", pch = 20 , col = color,
+    text.col = "black", cex = 0.7, pt.cex = 1.5, yjust = 100)
+}
+```
+
+Radar charts showing log2(fold-change) (log2FC) of selected cytokines. The top 3 and bottom 5 patients were classified as High and Low responders, respectively, based on their antibody titers, or Moderate otherwise. Negative log2FC values were adjusted to zero. Values larger than 3 log2FC were adjusted to 3 (if cap_at_max_lfc == TRUE). Maximum log2FC values for each cytokine are indicated in parentheses.
+
+# Individual plots
+
+Request:
+One radar with healthy vacc 2 and high ab cancer vacc 2 (exclude Il-27, MIp3a, IL-10)
+One radar with healthy vacc 2 and low ab cancer vacc 2 (exclude Il-27, MIp3a, IL-10)
+One radar with healthy vacc 2 and moderate ab cancer vacc 2 (exclude Il-27, MIp3a, IL-10)
+
+```{r individuals, echo=TRUE,message=FALSE,warning=FALSE}
+for(i in seq_along(levels(cytokine.df$contrast))){
+  contrast_of_interest <- levels(cytokine.df$contrast)[i]
+  
+  if(contrast_of_interest != "d23-d22"){
+    next
+  }
+  
+  radar.df <- cytokine.df %>% filter(contrast == contrast_of_interest) %>% select(-contrast)
+  row.names(radar.df) <- radar.df$group
+  radar.df$group <- NULL
+  
+  # Remove any with NA
+  filter <- apply(radar.df, 2, function(z) any(is.na(z)))
+  radar.df <- radar.df[ , !filter]
+
+  # Correct min
+  radar.df <- as.matrix(radar.df)
+  radar.df[which(radar.df < -1)] <- -1
+  
+  # Place in heatmap order
+  radar_cytokines <- heatmap.order[heatmap.order %in% colnames(radar.df)]
+  radar.df <- radar.df[,radar_cytokines]
+  
+  
+  
+  # Add healthy data
+  pfcol <- NA
+  color <- rev(scales::hue_pal()(nrow(radar.df)))
+  legend = rownames(radar.df)
+  names(color) <- legend
+  
+  if(contrast_of_interest %in% df.healthy$contrast){
+    healthy <- df.healthy %>% filter(contrast == contrast_of_interest) %>% select(-contrast)
+    radar_cytokines <- radar_cytokines[radar_cytokines %in% colnames(healthy)]
+    healthy <- healthy[,radar_cytokines]
+    row.names(healthy) <- "Healthy"
+    
+    radar.df <- rbind(healthy,radar.df[,radar_cytokines])
+    pfcol <- c("#99999980", rep(NA,nrow(radar.df)-1))
+    color <- c(NA, color)
+    names(color)[1] <- "Healthy"
+  }else{ next }
+  
+  # Prepare variable labels
+  vlabels_list <- list()
+  for(k in 2:nrow(radar.df)){
+      max_labels <- apply(radar.df[c(1,k),], 2, max)
+      max_labels <- round(max_labels, digits = 2)
+      names(max_labels) <- colnames(radar.df)
+      ind <- which(max_labels > max_lfc)
+      vlabels <- names(max_labels)
+      vlabels[ind] <- paste0(vlabels[ind],"\n(",max_labels[ind],")")
+      vlabels_list[[rownames(radar.df)[k]]] <- vlabels
+  }
+
+  
+  if(cap_at_max_lfc){
+    radar.df <- as.matrix(radar.df)
+    radar.df[which(radar.df > max_lfc)] <- max_lfc
+    radar.df <- as.data.frame(radar.df)
+  }
+
+  mm.df <- min_max.df %>% filter(contrast == contrast_of_interest) %>% select(-contrast)
+  row.names(mm.df) <- mm.df$type
+  mm.df$type <- NULL
+  
+  radar.df <- rbind(mm.df[,colnames(radar.df)],radar.df)
+  
+  maxval <- ceiling(max(radar.df["Max",]))
+  maxval <- ifelse(maxval > max_lfc, max_lfc, maxval)
+  radar.df["Max",] <- maxval
+  
+  for(k in 4:nrow(radar.df)){
+    plot.new()
+    
+    vlabels <- vlabels_list[[rownames(radar.df)[k]]]
+    vlabels <- gsub("alpha", "α", vlabels)
+    vlabels <- gsub("beta", "β", vlabels)
+    vlabels <- gsub("gamma","γ",vlabels)
+    vlabels <- gsub("delta","δ",vlabels)
+    
+    .radarchart(radar.df[c(1:3,k), ],
+                vlabels = vlabels,
+                seg = max_lfc,
+                axistype = 1, caxislabels = as.character(0:max_lfc),
+                # Customize the polygon
+                pcol = color[c(1,(k-2))], pfcol = pfcol[c(1,(k-2))], plwd = 1.5, plty = 1, pcex = 0.5,
+                # Customize the grid
+                cglcol = "grey", cglty = 1, cglwd = 0.8,
+                # Customize the axis
+                axislabcol = "grey",
+                # Variable labels
+                vlcex = ifelse(ncol(radar.df) <= 10, 0.7, 0.5),
+                title = paste0(contrast_of_interest,"\n",rownames(radar.df)[k]), truncate = truncate)
+    
+    # Add an horizontal legend
+    
+    if("Healthy" %in% rownames(radar.df)){
+      sample_color <- color[k-2]
+    }
+    legend(
+      x = "right", legend = legend[k-3], horiz = F,
+      bty = "n", pch = 20 , col = sample_color,
+      text.col = "black", cex = 0.7, pt.cex = 1.5, yjust = 100)    
+  }
+}
+```
+
+Individual radar charts for vaccination 2 showing log2(fold-change) (log2FC) of selected cytokines. The top 3 and bottom 5 patients were classified as High and Low responders, respectively, based on their antibody titers, or Moderate otherwise. Negative log2FC values were adjusted to zero. Values larger than 3 log2FC were adjusted to 3 (if cap_at_max_lfc == TRUE). Maximum log2FC values for each cytokine are indicated in parentheses. Median log2FC of healthy patients displayed in gray.

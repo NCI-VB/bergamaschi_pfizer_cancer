@@ -1,0 +1,30 @@
+patient_id	gender	age	hematological_malignancy	currentl_therapy	treatment	pulmonary_disease	Diabetes	autoimmune_disease	cardiovascular_disease	medical_history	transplant_year	time_transplant_to_vaccination	ab_titre
+C01	1	41	MDS	0	"zovirax,bactrimel,fedolen"	0	0	0	0	none	2018	2.8	3.769
+C02	2	52	Acute Myeloid Leukemia	0	"cellcept,ospen,zovirax"	0	0	0	0	none	2018	2.5	5.252
+C03	1	65	Acute Myeloid Leukemia	0	none	0	2	0	1	"concor,atacand, janumet"	2001	19.3	4.771
+C04	2	40	Acute lymphocytic leukemia	0	"yasmin,keppra"	0	0	0	0	none	2016	4.4	4.801
+C05	1	68	Chronic Myeloid Leukemia	0	none	0	0	0	0	none	2016	5.1	5.354
+C06	1	42	Acute myeloid leukemia	0	none	0	0	0	0	none	2013	6.8	4.826
+C07	1	40	Acute myeloid leukemia	0	prograf	0	0	0	0	none	2015	5.4	5.913
+C08	2	65	Mycosis Fungoides	0	"Cyclosporin,Bactrimel,Ospen,Fedolen"	0	0	0	0	none	2014	6.5	4.977
+C09	2	30	hodgkin lymphoma	0	"zovirax,ospen,bactrimel"	0	0	0	0	none	"autologous transplantation (2013), allogeneic transplantation (2015)"	5.9	4.548
+C10	2	43	acute lymphocytic leukemia	0	"cellcept,ospen"	2	0	0	1	"dilatrend,seretide"	2008	12.9	4.54
+C11	2	44	acute myeloid lekemia	0	"cellcept,ospen,zovirax,bactrimel"	0	0	0	0	none	2016	4.3	5.05
+C12	2	63	chronic lymphocytic leukemia	0	"ospen,bactrimel,zovirax,"	0	2	0	1	"approvel,lantus"	2020	1.0	2.889
+C13	2	52	acute myeloid leukemia	0	"cyclosporin,bactrimel,fedolen"	3	0	0	0	none	2013	7.5	4.655
+C14	1	64	MDS/acute myeloid leukemia	0	"zovirax,bactrimel"	0	0	0	0	none	2020	0.5	2.787
+C15	1	41	Acute Myeloid Leukemia	0	none	0	0	0	0	none	2015	5.4	5.885
+C16	1	53	Diffuse large B-cell lymphoma	0	"zovirax,wellvone"	0	0	0	0	none	"CAR-T cells (2020), autologous transplantation (2019)"	0.3	1
+C17	1	46	acute myeloid leukemia	0	"ospen,bactrimel,zovirax,"	0	0	0	0	none	2011	10.0	5.262
+C18	1	45	primary mediastinal B -cell lymphoma	0	"bactrimel,zovirax"	0	0	0	0	none	2020	1.2	1
+C19	2	46	non hodgkin lymphoma	0	none	0	0	0	0	NONE	allogeneic transplatation	3.4	4.676
+C20	2	59	MDS	0	"Prograf,bactrimel"	0	0	0	0	NONE	2020	0.9	4.54
+C21	1	65	multiple myeloma	1	none	0	0	0	0	none	2020	0.9	4.018
+C22	1	57	acute myeloid leukemia	0	baraclude	0	0	0	0	none	2017	3.4	3.953
+C23	1	30	non hodgkin lymphoma	0	none	0	0	0	0	none	2016	3.9	5.09
+C24	2	38	hodgkin lymphoma	0	none	0	0	0	1	diovan	2013	8.1	5.209
+C25	2	53	Myelofibrosis	0	"prograf,medrol,zovirax,noxafil"	0	0	0	1	diovan	2020	0.3	1.699
+C26	2	35	acute lymphocytic leukemia	0	"cellcept,jakavi,vibramycin"	0	0	0	0	none	2017	3.5	1
+C27	2	44	acute myeloid leukemia	0	"baraclude,zovirax"	0	0	0	1	concor	2016	4.9	5.913
+C28	2	46	acute myeloid leukemia	0	ezetimibet	0	0	0	0	none	2013	7.6	5.146
+C29	2	44	acute myeloid leukemia	0	none	0	0	0	0	NONE	autologous transplantation (2005)+allogeneic transplantation(2006)	14.7	4.59
